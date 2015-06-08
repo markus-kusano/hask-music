@@ -1,5 +1,5 @@
 {-#  LANGUAGE Arrows  #-}
-import Euterpea.IO.Audio.BasicSigFuns (envExponSeg, osc, tableSinesN, Table)
+import Euterpea.IO.Audio.BasicSigFuns (envExponSeg, osc, tableSinesN, Table, delayLineT, delayLine, noiseWhite, filterLowPassBW)
 import Euterpea.IO.Audio.Render (Instr,)
 import Euterpea.IO.Audio.IO (outFile,)
 import Euterpea.IO.Audio.Basics (apToHz, outA)
@@ -72,6 +72,42 @@ gitInst02Dble dur ap vol [] =
           v = fromIntegral vol / 100
           d = fromRational dur
 
+-- Basic karplus strong without an input. The sound is affected by the
+-- initial contents of the delay line.
+--
+-- The frequency is determined by the length of the buffer (this can be
+-- thought of as the time it takes for the wave to travel up the string)
+--
+-- The energy decay factor used is 0.994
+--
+-- More details here:
+-- http://introcs.cs.princeton.edu/java/assignments/guitar.html
+--
+-- TODO: Does the table need to be initialized with noise? How do you do
+-- this?
+karplusStrongBasic :: Instr (Mono AudRate)
+karplusStrongBasic dur ap vol [] = 
+    proc () -> do
+      -- 666 is the whitenoise seed
+      wn <- (noiseWhite 666) -< ()
+      rec a1 <- (delayLineT delayLength sawtoothTable) -< out
+          out <- filterLowPassBW -< (a1 * 0.994, 2000)
+      outA -< a1
+    where f = apToHz ap
+          v = fromIntegral vol / (100 :: Double)
+          d :: Double
+          d = fromRational dur
+          -- The length of the buffer is the integer value of the sample
+          -- rate divided by the frequency
+          -- TODO: How can we get the current sampling frequency?
+          delayLength :: Int
+          delayLength = round $ (44100 :: Double) / f
+          sawtoothTable = tableSinesN delayLength 
+                            [1, 0.5, 0.3, 0.25, 0.2, 0.167, 0.14, 0.125, 0.111]
+
+karplusTest :: IO () 
+karplusTest = outFile "out.wav" 6 (karplusStrongBasic 6 (absPitch (G, 4)) 80 [] )
+
 git01Test :: IO ()
 git01Test = outFile "out.wav" 6 (gitInst01 6 (absPitch (G, 4)) 80 [] )
 
@@ -79,6 +115,8 @@ git02Test :: IO ()
 --git02Test = outFile "out.wav" 6 (gitInst02 6 (absPitch (G, 4)) 80 [] )
 git02Test = outFile "out.wav" 6 (gitInst02Dble 6 (absPitch (G, 4)) 80 [] )
 
+
 main :: IO () 
 -- main = git01Test
-main = git02Test
+-- main = git02Test
+main = karplusTest
